@@ -1,0 +1,66 @@
+# Simple IPTV ProGuard Rules
+
+    # Keep data classes (models)
+    -keep class com.simpleiptv.player.core.model.** { *; }
+
+    # Keep Kotlin metadata
+    -keepattributes *Annotation*
+    -keepattributes Signature
+    -keepattributes InnerClasses
+    -keepattributes EnclosingMethod
+
+    # Keep Kotlin sealed classes
+    -keep class kotlin.Metadata { *; }
+
+    # ExoPlayer / Media3
+    -keep class androidx.media3.** { *; }
+    -dontwarn androidx.media3.**
+    -keep class com.google.android.exoplayer2.** { *; }
+    -dontwarn com.google.android.exoplayer2.**
+
+    # Coil
+    -keep class coil.** { *; }
+    -dontwarn coil.**
+
+    # OkHttp (used by Coil internally)
+    -dontwarn okhttp3.**
+    -dontwarn okio.**
+    -keep class okhttp3.** { *; }
+    -keep class okio.** { *; }
+
+    # JSON parsing
+    -keep class org.json.** { *; }
+
+    # XML parsing
+    -keep class org.xmlpull.** { *; }
+
+    # Compose
+    -keep class androidx.compose.** { *; }
+    -dontwarn androidx.compose.**
+
+    # Coroutines
+    -keep class kotlinx.coroutines.** { *; }
+    -dontwarn kotlinx.coroutines.**
+
+    # Keep enums
+    -keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+    }
+
+    # Keep Parcelable
+    -keep class * implements android.os.Parcelable {
+    public static final ** CREATOR;
+    }
+
+    # Keep R
+    -keepclassmembers class **.R$* {
+    public static <fields>;
+    }
+
+    # Remove logging in release
+    -assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    }
