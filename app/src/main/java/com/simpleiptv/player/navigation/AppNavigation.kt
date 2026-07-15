@@ -22,13 +22,12 @@ import com.simpleiptv.player.feature.favorites.FavoritesScreen
 import com.simpleiptv.player.feature.home.HomeScreen
 import com.simpleiptv.player.feature.live.LiveScreen
 import com.simpleiptv.player.feature.movies.MoviesScreen
+import com.simpleiptv.player.feature.player.PlayerScreen
 import com.simpleiptv.player.feature.playlists.PlaylistsScreen
 import com.simpleiptv.player.feature.search.SearchScreen
 import com.simpleiptv.player.feature.series.SeriesScreen
 import com.simpleiptv.player.feature.settings.SettingsScreen
-import com.simpleiptv.player.feature.player.PlayerScreen
 import com.simpleiptv.player.ui.components.SimpleBottomNavigationBar
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,41 +41,51 @@ fun SimpleIPTVApp() {
         .firstOrNull { it.route == currentRoute }
         ?.title ?: AppDestination.Home.title
 
+    val showAppChrome = currentRoute != AppDestination.Player.route
+
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(text = currentTitle)
-                },
-                actions = {
-                    if (currentRoute != AppDestination.Search.route) {
-                        IconButton(
-                            onClick = {
-                                navController.navigateSingleTopTo(AppDestination.Search.route)
+            if (showAppChrome) {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(text = currentTitle)
+                    },
+                    actions = {
+                        if (currentRoute != AppDestination.Search.route) {
+                            IconButton(
+                                onClick = {
+                                    navController.navigateSingleTopTo(AppDestination.Search.route)
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = "Search"
+                                )
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Search,
-                                contentDescription = "Search"
-                            )
                         }
                     }
-                }
-            )
+                )
+            }
         },
         bottomBar = {
-            SimpleBottomNavigationBar(
-                currentRoute = currentRoute,
-                onDestinationSelected = { destination ->
-                    navController.navigateSingleTopTo(destination.route)
-                }
-            )
+            if (showAppChrome) {
+                SimpleBottomNavigationBar(
+                    currentRoute = currentRoute,
+                    onDestinationSelected = { destination ->
+                        navController.navigateSingleTopTo(destination.route)
+                    }
+                )
+            }
         }
     ) { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = AppDestination.Home.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = if (showAppChrome) {
+                Modifier.padding(innerPadding)
+            } else {
+                Modifier
+            }
         ) {
             composable(AppDestination.Home.route) {
                 HomeScreen(
@@ -116,15 +125,17 @@ fun SimpleIPTVApp() {
             composable(AppDestination.Settings.route) {
                 SettingsScreen()
             }
-            composable(AppDestination.Player.route) {
-                PlayerScreen(
+
+            composable(AppDestination.Search.route) {
+                SearchScreen(
                     onBack = {
                         navController.popBackStack()
                     }
                 )
             }
-            composable(AppDestination.Search.route) {
-                SearchScreen(
+
+            composable(AppDestination.Player.route) {
+                PlayerScreen(
                     onBack = {
                         navController.popBackStack()
                     }

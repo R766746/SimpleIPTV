@@ -7,17 +7,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,16 +44,22 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.core.player.PlaybackUiState
 import com.simpleiptv.player.core.repository.ChannelSessionStore
 import com.simpleiptv.player.ui.components.PlaceholderScreen
 
 @OptIn(UnstableApi::class)
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlayerScreen(
     onBack: () -> Unit
 ) {
-    val channel = ChannelSessionStore.selectedChannel
+    var currentChannel by remember {
+        mutableStateOf(ChannelSessionStore.selectedChannel)
+    }
+
+    val channel = currentChannel
 
     if (channel == null) {
         PlaceholderScreen(
@@ -73,10 +81,6 @@ fun PlayerScreen(
 
     var isPlaying by remember {
         mutableStateOf(false)
-    }
-
-    var fatalPlayerError by remember {
-        mutableStateOf<String?>(null)
     }
 
     val playerResult = remember(context) {
@@ -101,8 +105,8 @@ fun PlayerScreen(
         return
     }
 
-    fun prepareAndPlay() {
-        val streamUrl = channel.streamUrl.trim()
+    fun prepareAndPlay(targetChannel: Channel) {
+        val streamUrl = targetChannel.streamUrl.trim()
 
         if (streamUrl.isBlank()) {
             playbackState = PlaybackUiState.Error(
@@ -129,6 +133,14 @@ fun PlayerScreen(
                 message = throwable.message ?: throwable::class.java.simpleName
             )
         }
+    }
+
+    fun switchToChannel(nextChannel: Channel?) {
+        if (nextChannel == null) {
+            return
+        }
+
+        currentChannel = nextChannel
     }
 
     DisposableEffect(exoPlayer) {
@@ -162,8 +174,6 @@ fun PlayerScreen(
             runCatching {
                 exoPlayer.stop()
                 exoPlayer.release()
-            }.onFailure { throwable ->
-                fatalPlayerError = throwable.message
             }
         }
     }
@@ -178,7 +188,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(channel.streamUrl) {
-        prepareAndPlay()
+        prepareAndPlay(channel)
     }
 
     Column(
@@ -189,7 +199,7 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .height(340.dp)
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
@@ -226,9 +236,10 @@ fun PlayerScreen(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
                     onClick = onBack
@@ -262,24 +273,48 @@ fun PlayerScreen(
 
                 TextButton(
                     onClick = {
-                        prepareAndPlay()
+                        prepareAndPlay(channel)
                     }
                 ) {
                     Text(text = "Retry")
                 }
+
+                OutlinedButton(
+                    enabled = ChannelSessionStore.hasMultipleChannels(),
+                    onClick = {
+                        switchToChannel(ChannelSessionStore.selectPreviousChannel())
+                    }
+                ) {
+                    Text(text = "Previous")
+                }
+
+                OutlinedButton(
+                    enabled = ChannelSessionStore.hasMultipleChannels(),
+                    onClick = {
+                        switchToChannel(ChannelSessionStore.selectNextChannel())
+                    }
+                ) {
+                    Text(text = "Next")
+                }
             }
 
-            PlaybackStatusChip(
-                playbackState = playbackState,
-                isPlaying = isPlaying
-            )
-
-            fatalPlayerError?.let { message ->
-                Text(
-                    text = "Player release warning: $message",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PlaybackStatusChip(
+                    playbackState = playbackState,
+                    isPlaying = isPlaying
                 )
+
+                ChannelSessionStore.selectedChannelPositionText()?.let { position ->
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(text = "Channel $position")
+                        }
+                    )
+                }
             }
 
             if (playbackState is PlaybackUiState.Error) {
