@@ -71,7 +71,8 @@ import android.view.KeyEvent as AndroidKeyEvent
 @kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlayerScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenEpgTimeline: () -> Unit = {}
 ) {
     var currentChannel by remember {
         mutableStateOf(ChannelSessionStore.selectedChannel)
@@ -295,8 +296,14 @@ fun PlayerScreen(
                 OutlinedButton(onClick = { isFullscreen = true }) { Text(text = "Full Screen") }
                 OutlinedButton(enabled = ChannelSessionStore.hasMultipleChannels(), onClick = { switchToChannel(ChannelSessionStore.selectPreviousChannel()) }) { Text(text = "Previous") }
                 OutlinedButton(enabled = ChannelSessionStore.hasMultipleChannels(), onClick = { switchToChannel(ChannelSessionStore.selectNextChannel()) }) { Text(text = "Next") }
-                OutlinedButton(onClick = { isFavorite = favoriteStore.toggleFavorite(channel) }) {
+                OutlinedButton(onClick = { isFavorite = favoriteStore.toggleFavorite(channel) })
+                {
                     Text(text = if (isFavorite) "★ Remove Favorite" else "☆ Add Favorite")
+                }
+                OutlinedButton(
+                    onClick = onOpenEpgTimeline
+                ) {
+                    Text(text = "📺 EPG / Catch-up")
                 }
             }
 

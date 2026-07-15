@@ -14,6 +14,7 @@ sealed class AppDestination(
     object Settings : AppDestination("settings", "Settings", "Settings")
     object Search : AppDestination("search", "Search", "Search")
     object Player : AppDestination("player", "Player", "Player")
+    object EpgTimeline : AppDestination("epg_timeline", "EPG Timeline", "EPG")
 }
 
 val BottomDestinations = listOf(
@@ -33,5 +34,6 @@ val AllDestinations = listOf(
     AppDestination.Playlists,
     AppDestination.Settings,
     AppDestination.Search,
-    AppDestination.Player
+    AppDestination.Player,
+    AppDestination.EpgTimeline
 )

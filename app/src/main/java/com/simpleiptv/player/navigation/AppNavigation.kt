@@ -27,6 +27,9 @@ import com.simpleiptv.player.feature.playlists.PlaylistsScreen
 import com.simpleiptv.player.feature.search.SearchScreen
 import com.simpleiptv.player.feature.series.SeriesScreen
 import com.simpleiptv.player.feature.settings.SettingsScreen
+import com.simpleiptv.player.feature.player.EpgTimelineScreen
+import com.simpleiptv.player.core.repository.ChannelSessionStore
+import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.ui.components.SimpleBottomNavigationBar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,7 +44,8 @@ fun SimpleIPTVApp() {
         .firstOrNull { it.route == currentRoute }
         ?.title ?: AppDestination.Home.title
 
-    val showAppChrome = currentRoute != AppDestination.Player.route
+    val showAppChrome = currentRoute != AppDestination.Player.route &&
+            currentRoute != AppDestination.EpgTimeline.route
 
     Scaffold(
         topBar = {
@@ -134,6 +138,9 @@ fun SimpleIPTVApp() {
                 SearchScreen(
                     onBack = {
                         navController.popBackStack()
+                    },
+                    onOpenPlayer = {
+                        navController.navigate(AppDestination.Player.route)
                     }
                 )
             }
@@ -142,8 +149,49 @@ fun SimpleIPTVApp() {
                 PlayerScreen(
                     onBack = {
                         navController.popBackStack()
+                    },
+                    onOpenEpgTimeline = {
+                        navController.navigate(AppDestination.EpgTimeline.route)
                     }
                 )
+            }
+            composable(AppDestination.EpgTimeline.route) {
+                val channel = ChannelSessionStore.selectedChannel
+
+                if (channel != null) {
+                    EpgTimelineScreen(
+                        channel = channel,
+                        onBack = {
+                            navController.popBackStack()
+                        },
+                        onPlayCatchup = { catchupInfo ->
+                            ChannelSessionStore.selectChannel(
+                                Channel(
+                                    id = "catchup_${catchupInfo.program.startTimeMillis}",
+                                    name = "${catchupInfo.channelName} - ${catchupInfo.program.title}",
+                                    streamUrl = catchupInfo.catchupUrl,
+                                    tvgId = null,
+                                    tvgName = null,
+                                    logoUrl = null,
+                                    groupTitle = "Catch-up",
+                                    playlistSourceId = null,
+                                    playlistName = "Catch-up"
+                                )
+                            )
+                            navController.navigate(AppDestination.Player.route)
+                        }
+                    )
+                } else {
+                    com.simpleiptv.player.ui.components.PlaceholderScreen(
+                        icon = "📺",
+                        title = "No Channel Selected",
+                        description = "Go back to Live TV and select a channel first.",
+                        primaryActionText = "Back",
+                        onPrimaryAction = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
             }
         }
     }
