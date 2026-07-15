@@ -3,10 +3,11 @@ package com.simpleiptv.player.feature.live
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.core.model.PlaylistSourceType
@@ -35,6 +38,7 @@ import com.simpleiptv.player.core.repository.PlaylistSourcePreviewStore
 import com.simpleiptv.player.core.util.M3uPlaylistParser
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LiveScreen(
     onOpenPlaylists: () -> Unit,
@@ -53,6 +57,14 @@ fun LiveScreen(
 
     var selectedGroup by remember {
         mutableStateOf<String?>(null)
+    }
+
+    var selectedSourceName by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var searchQuery by remember {
+        mutableStateOf(TextFieldValue(""))
     }
 
     var statusMessage by remember {
@@ -82,6 +94,7 @@ fun LiveScreen(
         }
 
         selectedGroup = null
+        selectedSourceName = null
         isLoading = false
     }
 
@@ -89,149 +102,297 @@ fun LiveScreen(
         refreshChannels()
     }
 
-    val groups = remember(channels) {
+    val sourceNames = remember(channels) {
         channels
-            .map { groupName(it) }
+            .mapNotNull { channel ->
+                channel.playlistName?.takeIf { it.isNotBlank() }
+            }
             .distinct()
             .sorted()
     }
 
-    val visibleChannels = remember(channels, selectedGroup) {
-        if (selectedGroup == null) {
-            channels
-        } else {
-            channels.filter { groupName(it) == selectedGroup }
-        }
+    val groups = remember(channels, selectedSourceName) {
+        channels
+            .asSequence()
+            .filter { channel ->
+                selectedSourceName == null || channel.playlistName == selectedSourceName
+            }
+            .map { groupName(it) }
+            .distinct()
+            .sorted()
+            .toList()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+    val visibleChannels = remember(
+        channels,
+        selectedGroup,
+        selectedSourceName,
+        searchQuery
+    ) {
+        val query = searchQuery.text.trim()
+
+        channels
+            .asSequence()
+            .filter { channel ->
+                selectedSourceName == null || channel.playlistName == selectedSourceName
+            }
+            .filter { channel ->
+                selectedGroup == null || groupName(channel) == selectedGroup
+            }
+            .filter { channel ->
+                query.isBlank() || channel.matchesQuery(query)
+            }
+            .toList()
+    }
+
+    val hasActiveFilters =
+        selectedGroup != null ||
+                selectedSourceName != null ||
+                searchQuery.text.isNotBlank()
+
+    LazyColumn(
+        contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Live TV",
-                style = MaterialTheme.typography.headlineSmall
-            )
-
-            Text(
-                text = "Channels are loaded from enabled M3U URL playlist sources. Add a real M3U URL in Playlists, then refresh this screen.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Button(
-                enabled = !isLoading,
-                onClick = {
-                    scope.launch {
-                        refreshChannels()
-                    }
-                }
+        item {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = if (isLoading) {
-                        "Loading..."
-                    } else {
-                        "Refresh Channels"
-                    }
+                    text = "Live TV",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                Text(
+                    text = "Channels are loaded from enabled M3U URL playlist sources. You can search, filter by playlist source, and filter by group.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
 
-            TextButton(
-                onClick = onOpenPlaylists
+        item {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "Open Playlists")
+                Button(
+                    enabled = !isLoading,
+                    onClick = {
+                        scope.launch {
+                            refreshChannels()
+                        }
+                    }
+                ) {
+                    Text(
+                        text = if (isLoading) {
+                            "Loading..."
+                        } else {
+                            "Refresh Channels"
+                        }
+                    )
+                }
+
+                TextButton(
+                    onClick = onOpenPlaylists
+                ) {
+                    Text(text = "Open Playlists")
+                }
+
+                if (hasActiveFilters) {
+                    TextButton(
+                        onClick = {
+                            selectedGroup = null
+                            selectedSourceName = null
+                            searchQuery = TextFieldValue("")
+                        }
+                    ) {
+                        Text(text = "Clear Filters")
+                    }
+                }
             }
         }
 
         if (isLoading) {
-            CircularProgressIndicator()
+            item {
+                CircularProgressIndicator()
+            }
         }
 
         statusMessage?.let { message ->
-            AssistChip(
-                onClick = {},
-                label = {
-                    Text(text = message)
-                }
-            )
+            item {
+                AssistChip(
+                    onClick = {},
+                    label = {
+                        Text(text = message)
+                    }
+                )
+            }
         }
 
         if (warnings.isNotEmpty()) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "Warnings",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-
-                warnings.take(4).forEach { warning ->
+            item {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
-                        text = "• $warning",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Warnings",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.secondary
                     )
-                }
 
-                if (warnings.size > 4) {
-                    Text(
-                        text = "• ${warnings.size - 4} more warning(s)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    warnings.take(4).forEach { warning ->
+                        Text(
+                            text = "• $warning",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (warnings.size > 4) {
+                        Text(
+                            text = "• ${warnings.size - 4} more warning(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
 
         if (channels.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = selectedGroup == null,
-                    onClick = {
-                        selectedGroup = null
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
                     },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     label = {
-                        Text(text = "All")
+                        Text(text = "Search channels")
+                    },
+                    placeholder = {
+                        Text(text = "Search by channel name, group, tvg-id, or playlist")
                     }
                 )
+            }
 
-                groups.forEach { group ->
-                    FilterChip(
-                        selected = selectedGroup == group,
-                        onClick = {
-                            selectedGroup = group
-                        },
-                        label = {
-                            Text(text = group)
+            if (sourceNames.isNotEmpty()) {
+                item {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Playlist Source",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedSourceName == null,
+                                onClick = {
+                                    selectedSourceName = null
+                                    selectedGroup = null
+                                },
+                                label = {
+                                    Text(text = "All Sources")
+                                }
+                            )
+
+                            sourceNames.forEach { sourceName ->
+                                FilterChip(
+                                    selected = selectedSourceName == sourceName,
+                                    onClick = {
+                                        selectedSourceName = sourceName
+                                        selectedGroup = null
+                                    },
+                                    label = {
+                                        Text(text = sourceName)
+                                    }
+                                )
+                            }
                         }
-                    )
+                    }
                 }
             }
 
-            Text(
-                text = "${visibleChannels.size} channel(s)",
-                style = MaterialTheme.typography.titleMedium
-            )
+            if (groups.isNotEmpty()) {
+                item {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Group",
+                            style = MaterialTheme.typography.titleSmall
+                        )
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedGroup == null,
+                                onClick = {
+                                    selectedGroup = null
+                                },
+                                label = {
+                                    Text(text = "All Groups")
+                                }
+                            )
+
+                            groups.forEach { group ->
+                                FilterChip(
+                                    selected = selectedGroup == group,
+                                    onClick = {
+                                        selectedGroup = group
+                                    },
+                                    label = {
+                                        Text(text = group)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                ChannelCountSummary(
+                    totalChannels = channels.size,
+                    visibleChannels = visibleChannels.size,
+                    selectedSourceName = selectedSourceName,
+                    selectedGroup = selectedGroup,
+                    searchQuery = searchQuery.text
+                )
+            }
+
+            if (visibleChannels.isEmpty()) {
+                item {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "No channels match your filters.",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(
+                            text = "Try clearing search text, selecting All Sources, or selecting All Groups.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
                 items(
                     items = visibleChannels,
                     key = { channel -> channel.id }
@@ -239,6 +400,7 @@ fun LiveScreen(
                     LiveChannelCard(
                         channel = channel,
                         onClick = {
+                            ChannelSessionStore.setChannels(visibleChannels)
                             ChannelSessionStore.selectChannel(channel)
                             onOpenPlayer(channel)
                         }
@@ -246,20 +408,62 @@ fun LiveScreen(
                 }
             }
         } else if (!isLoading) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "No live channels yet.",
-                    style = MaterialTheme.typography.titleMedium
-                )
+            item {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "No live channels yet.",
+                        style = MaterialTheme.typography.titleMedium
+                    )
 
-                Text(
-                    text = "Go to Playlists, add an enabled M3U URL source, then return here and refresh.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    Text(
+                        text = "Go to Playlists, add an enabled M3U URL source, then return here and refresh.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChannelCountSummary(
+    totalChannels: Int,
+    visibleChannels: Int,
+    selectedSourceName: String?,
+    selectedGroup: String?,
+    searchQuery: String
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "$visibleChannels of $totalChannels channel(s)",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        val filters = buildList {
+            selectedSourceName?.let {
+                add("Source: $it")
+            }
+
+            selectedGroup?.let {
+                add("Group: $it")
+            }
+
+            if (searchQuery.isNotBlank()) {
+                add("Search: ${searchQuery.trim()}")
+            }
+        }
+
+        if (filters.isNotEmpty()) {
+            Text(
+                text = filters.joinToString(separator = " • "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -336,6 +540,15 @@ private suspend fun loadChannelsFromSavedM3uUrls(
         warnings = warnings,
         sourceCount = sources.size
     )
+}
+
+private fun Channel.matchesQuery(query: String): Boolean {
+    return name.contains(query, ignoreCase = true) ||
+            streamUrl.contains(query, ignoreCase = true) ||
+            groupTitle.orEmpty().contains(query, ignoreCase = true) ||
+            tvgId.orEmpty().contains(query, ignoreCase = true) ||
+            tvgName.orEmpty().contains(query, ignoreCase = true) ||
+            playlistName.orEmpty().contains(query, ignoreCase = true)
 }
 
 private fun groupName(channel: Channel): String {
