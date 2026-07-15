@@ -33,6 +33,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.simpleiptv.player.core.model.PlaylistSourcePreview
 import com.simpleiptv.player.core.model.PlaylistSourceType
+import com.simpleiptv.player.core.model.XtreamCredentials
+import com.simpleiptv.player.core.repository.XtreamCredentialsStore
 import com.simpleiptv.player.core.repository.PlaylistSourcePreviewStore
 import java.util.UUID
 
@@ -41,6 +43,9 @@ fun PlaylistsScreen() {
     val context = LocalContext.current
     val playlistStore = remember(context) {
         PlaylistSourcePreviewStore(context)
+    }
+    val xtreamCredentialsStore = remember(context) {
+        XtreamCredentialsStore(context)
     }
 
     var selectedType by remember {
@@ -170,9 +175,11 @@ fun PlaylistsScreen() {
                         PlaylistSourceType.XTREAM_CODES -> xtreamServerUrl
                     }
 
+                    val newId = UUID.randomUUID().toString()
+
                     playlists.add(
                         PlaylistSourcePreview(
-                            id = UUID.randomUUID().toString(),
+                            id = newId,
                             name = playlistName.trim(),
                             type = selectedType,
                             description = description.trim(),
@@ -181,6 +188,17 @@ fun PlaylistsScreen() {
                     )
 
                     playlistStore.save(playlists.toList())
+
+                    if (selectedType == PlaylistSourceType.XTREAM_CODES) {
+                        xtreamCredentialsStore.save(
+                            sourceId = newId,
+                            credentials = XtreamCredentials(
+                                serverUrl = xtreamServerUrl.trim(),
+                                username = xtreamUsername.trim(),
+                                password = xtreamPassword.trim()
+                            )
+                        )
+                    }
 
                     playlistName = ""
                     m3uUrl = ""

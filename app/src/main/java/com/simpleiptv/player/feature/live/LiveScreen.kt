@@ -36,6 +36,9 @@ import com.simpleiptv.player.core.network.M3uPlaylistFetcher
 import com.simpleiptv.player.core.repository.ChannelSessionStore
 import com.simpleiptv.player.core.repository.PlaylistSourcePreviewStore
 import com.simpleiptv.player.core.util.M3uPlaylistParser
+import com.simpleiptv.player.core.model.XtreamCredentials
+import com.simpleiptv.player.core.network.XtreamApiClient
+import com.simpleiptv.player.core.repository.XtreamCredentialsStore
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -80,7 +83,7 @@ fun LiveScreen(
         statusMessage = null
         warnings = emptyList()
 
-        val result = loadChannelsFromSavedM3uUrls(context = context)
+        val result = loadChannelsFromAllSources(context = context)
 
         channels = result.channels
         warnings = result.warnings
@@ -88,8 +91,8 @@ fun LiveScreen(
         ChannelSessionStore.setChannels(result.channels)
 
         statusMessage = when {
-            result.sourceCount == 0 -> "No enabled M3U URL playlist sources found."
-            result.channels.isEmpty() -> "No channels were parsed from enabled M3U URL sources."
+            result.sourceCount == 0 -> "No enabled playlist sources found."
+            result.channels.isEmpty() -> "No channels were parsed from enabled sources."
             else -> "Loaded ${result.channels.size} channels from ${result.sourceCount} source(s)."
         }
 
@@ -468,18 +471,15 @@ private fun ChannelCountSummary(
     }
 }
 
-private suspend fun loadChannelsFromSavedM3uUrls(
+private suspend fun loadChannelsFromAllSources(
     context: android.content.Context
 ): LiveChannelLoadResult {
     val playlistStore = PlaylistSourcePreviewStore(context)
+    val xtreamCredentialsStore = XtreamCredentialsStore(context)
 
-    val sources = playlistStore
-        .load()
-        .filter { playlist ->
-            playlist.isEnabled && playlist.type == PlaylistSourceType.M3U_URL
-        }
+    val allSources = playlistStore.load().filter { it.isEnabled }
 
-    if (sources.isEmpty()) {
+    if (allSources.isEmpty()) {
         return LiveChannelLoadResult(
             channels = emptyList(),
             warnings = emptyList(),
@@ -490,46 +490,67 @@ private suspend fun loadChannelsFromSavedM3uUrls(
     val allChannels = mutableListOf<Channel>()
     val warnings = mutableListOf<String>()
 
-    sources.forEach { source ->
-        val url = source.description.trim()
-
-        if (url.isBlank()) {
-            warnings.add("${source.name}: empty M3U URL.")
-            return@forEach
-        }
-
-        val fetchResult = M3uPlaylistFetcher.fetch(url)
-
-        fetchResult
-            .onSuccess { rawPlaylist ->
-                val parseResult = M3uPlaylistParser.parse(rawPlaylist)
-
-                warnings.addAll(
-                    parseResult.warnings.map { warning ->
-                        "${source.name}: $warning"
-                    }
-                )
-
-                val sourceChannels = parseResult.channels.map { channel ->
-                    channel.copy(
-                        playlistSourceId = source.id,
-                        playlistName = source.name
-                    )
+    allSources.forEach { source ->
+        when (source.type) {
+            PlaylistSourceType.M3U_URL -> {
+                val url = source.description.trim()
+                if (url.isBlank()) {
+                    warnings.add("${source.name}: empty M3U URL.")
+                    return@forEach
                 }
 
-                allChannels.addAll(sourceChannels)
+                val fetchResult = M3uPlaylistFetcher.fetch(url)
+
+                fetchResult
+                    .onSuccess { rawPlaylist ->
+                        val parseResult = M3uPlaylistParser.parse(rawPlaylist)
+
+                        warnings.addAll(
+                            parseResult.warnings.map { warning ->
+                                "${source.name}: $warning"
+                            }
+                        )
+
+                        val sourceChannels = parseResult.channels.map { channel ->
+                            channel.copy(
+                                playlistSourceId = source.id,
+                                playlistName = source.name
+                            )
+                        }
+
+                        allChannels.addAll(sourceChannels)
+                    }
+                    .onFailure { throwable ->
+                        warnings.add(
+                            "${source.name}: ${throwable.message ?: "Failed to load M3U playlist."}"
+                        )
+                    }
             }
-            .onFailure { throwable ->
-                warnings.add(
-                    "${source.name}: ${throwable.message ?: "Failed to load playlist."}"
+
+            PlaylistSourceType.M3U_TEXT -> {
+                warnings.add("${source.name}: M3U text sources are not yet supported for Live TV loading.")
+            }
+
+            PlaylistSourceType.XTREAM_CODES -> {
+                val credentials = xtreamCredentialsStore.getBySourceId(source.id)
+
+                if (credentials == null) {
+                    warnings.add("${source.name}: Xtream credentials not found.")
+                    return@forEach
+                }
+
+                loadXtreamChannels(
+                    source = source,
+                    credentials = credentials,
+                    channels = allChannels,
+                    warnings = warnings
                 )
             }
+        }
     }
 
     val dedupedChannels = allChannels
-        .distinctBy { channel ->
-            channel.streamUrl
-        }
+        .distinctBy { channel -> channel.streamUrl }
         .sortedWith(
             compareBy<Channel> { groupName(it) }
                 .thenBy { it.name.lowercase() }
@@ -538,9 +559,74 @@ private suspend fun loadChannelsFromSavedM3uUrls(
     return LiveChannelLoadResult(
         channels = dedupedChannels,
         warnings = warnings,
-        sourceCount = sources.size
+        sourceCount = allSources.size
     )
 }
+
+private suspend fun loadXtreamChannels(
+    source: com.simpleiptv.player.core.model.PlaylistSourcePreview,
+    credentials: XtreamCredentials,
+    channels: MutableList<Channel>,
+    warnings: MutableList<String>
+) {
+    val authResult = XtreamApiClient.authenticate(credentials)
+
+    authResult.onFailure { throwable ->
+        warnings.add("${source.name}: Authentication failed - ${throwable.message}")
+        return
+    }
+
+    val categoriesResult = XtreamApiClient.getLiveCategories(credentials)
+
+    val categoryMap = mutableMapOf<String, String>()
+
+    categoriesResult
+        .onSuccess { categories ->
+            categories.forEach { category ->
+                categoryMap[category.id] = category.name
+            }
+        }
+        .onFailure { throwable ->
+            warnings.add("${source.name}: Failed to load categories - ${throwable.message}")
+        }
+
+    val streamsResult = XtreamApiClient.getLiveStreams(credentials)
+
+    streamsResult
+        .onSuccess { streams ->
+            streams.forEach { stream ->
+                val extension = stream.containerExtension ?: "ts"
+                val streamUrl = credentials.liveStreamUrl(stream.streamId, extension)
+
+                val groupTitle = stream.categoryId
+                    ?.let { categoryMap[it] }
+                    ?: "Other"
+
+                val channel = Channel(
+                    id = "xtream_${source.id}_${stream.streamId}",
+                    name = stream.name,
+                    streamUrl = streamUrl,
+                    tvgId = stream.epgChannelId,
+                    tvgName = stream.name,
+                    logoUrl = stream.streamIcon,
+                    groupTitle = groupTitle,
+                    playlistSourceId = source.id,
+                    playlistName = source.name
+                )
+
+                channels.add(channel)
+            }
+        }
+        .onFailure { throwable ->
+            warnings.add("${source.name}: Failed to load streams - ${throwable.message}")
+        }
+}
+
+private data class LiveChannelLoadResult(
+    val channels: List<Channel>,
+    val warnings: List<String>,
+    val sourceCount: Int
+)
 
 private fun Channel.matchesQuery(query: String): Boolean {
     return name.contains(query, ignoreCase = true) ||
@@ -557,8 +643,3 @@ private fun groupName(channel: Channel): String {
         ?: "Other"
 }
 
-private data class LiveChannelLoadResult(
-    val channels: List<Channel>,
-    val warnings: List<String>,
-    val sourceCount: Int
-)
