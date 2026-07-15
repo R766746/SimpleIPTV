@@ -21,6 +21,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.simpleiptv.player.core.model.Channel
+import com.simpleiptv.player.ui.components.ChannelLogo
 
 @Composable
 fun LiveChannelCard(
@@ -63,9 +64,14 @@ fun LiveChannelCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(18.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            ChannelLogo(
+                logoUrl = channel.logoUrl,
+                channelName = channel.name
+            )
+
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)

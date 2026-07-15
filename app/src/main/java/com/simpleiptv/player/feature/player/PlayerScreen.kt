@@ -1,7 +1,11 @@
 package com.simpleiptv.player.feature.player
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,6 +42,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -48,6 +56,7 @@ import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.core.player.PlaybackUiState
 import com.simpleiptv.player.core.repository.ChannelSessionStore
 import com.simpleiptv.player.core.repository.FavoriteChannelStore
+import com.simpleiptv.player.ui.components.ChannelLogo
 import com.simpleiptv.player.ui.components.PlaceholderScreen
 
 @OptIn(UnstableApi::class)
@@ -84,12 +93,22 @@ fun PlayerScreen(
         mutableStateOf(favoriteStore.isFavorite(channel.id))
     }
 
+    var isFullscreen by remember {
+        mutableStateOf(false)
+    }
+
     var playbackState by remember {
         mutableStateOf<PlaybackUiState>(PlaybackUiState.Idle)
     }
 
     var isPlaying by remember {
         mutableStateOf(false)
+    }
+
+    ApplyFullscreenMode(enabled = isFullscreen)
+
+    BackHandler(enabled = isFullscreen) {
+        isFullscreen = false
     }
 
     val playerResult = remember(context) {
@@ -200,42 +219,31 @@ fun PlayerScreen(
         prepareAndPlay(channel)
     }
 
+    if (isFullscreen) {
+        FullscreenPlayerView(
+            exoPlayer = exoPlayer,
+            playbackState = playbackState,
+            channelName = channel.name,
+            onBack = onBack,
+            onExitFullscreen = {
+                isFullscreen = false
+            }
+        )
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        Box(
+        PlayerVideoSurface(
+            exoPlayer = exoPlayer,
+            playbackState = playbackState,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(340.dp)
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { androidContext ->
-                    PlayerView(androidContext).apply {
-                        player = exoPlayer
-                        useController = true
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-
-                        layoutParams = FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    }
-                },
-                update = { playerView ->
-                    playerView.player = exoPlayer
-                }
-            )
-
-            if (playbackState is PlaybackUiState.Buffering) {
-                CircularProgressIndicator()
-            }
-        }
+        )
 
         Column(
             modifier = Modifier
@@ -286,6 +294,14 @@ fun PlayerScreen(
                     }
                 ) {
                     Text(text = "Retry")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        isFullscreen = true
+                    }
+                ) {
+                    Text(text = "Full Screen")
                 }
 
                 OutlinedButton(
@@ -359,35 +375,48 @@ fun PlayerScreen(
                 )
             }
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = channel.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                ChannelLogo(
+                    logoUrl = channel.logoUrl,
+                    channelName = channel.name,
+                    size = 64.dp
                 )
 
-                Text(
-                    text = channel.groupTitle?.takeIf { it.isNotBlank() } ?: "No group",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                channel.playlistName?.let { playlistName ->
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
-                        text = "Source: $playlistName",
+                        text = channel.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = channel.groupTitle?.takeIf { it.isNotBlank() } ?: "No group",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
 
-                channel.tvgId?.let { tvgId ->
-                    Text(
-                        text = "TVG ID: $tvgId",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    channel.playlistName?.let { playlistName ->
+                        Text(
+                            text = "Source: $playlistName",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    channel.tvgId?.let { tvgId ->
+                        Text(
+                            text = "TVG ID: $tvgId",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -405,6 +434,91 @@ fun PlayerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenPlayerView(
+    exoPlayer: ExoPlayer,
+    playbackState: PlaybackUiState,
+    channelName: String,
+    onBack: () -> Unit,
+    onExitFullscreen: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        PlayerVideoSurface(
+            exoPlayer = exoPlayer,
+            playbackState = playbackState,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        FlowRow(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = onBack
+            ) {
+                Text(text = "Back")
+            }
+
+            OutlinedButton(
+                onClick = onExitFullscreen
+            ) {
+                Text(text = "Exit Full Screen")
+            }
+
+            AssistChip(
+                onClick = {},
+                label = {
+                    Text(text = channelName)
+                }
+            )
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun PlayerVideoSurface(
+    exoPlayer: ExoPlayer,
+    playbackState: PlaybackUiState,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { androidContext ->
+                PlayerView(androidContext).apply {
+                    player = exoPlayer
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            },
+            update = { playerView ->
+                playerView.player = exoPlayer
+            }
+        )
+
+        if (playbackState is PlaybackUiState.Buffering) {
+            CircularProgressIndicator()
         }
     }
 }
@@ -434,4 +548,55 @@ private fun PlaybackStatusChip(
             Text(text = text)
         }
     )
+}
+
+@Composable
+private fun ApplyFullscreenMode(
+    enabled: Boolean
+) {
+    val context = LocalContext.current
+    val activity = remember(context) {
+        context.findActivity()
+    }
+
+    DisposableEffect(enabled, activity) {
+        val window = activity?.window
+
+        if (window != null) {
+            val controller = WindowInsetsControllerCompat(
+                window,
+                window.decorView
+            )
+
+            if (enabled) {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+            }
+        }
+
+        onDispose {
+            if (window != null) {
+                WindowInsetsControllerCompat(
+                    window,
+                    window.decorView
+                ).show(WindowInsetsCompat.Type.systemBars())
+
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+            }
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 }
