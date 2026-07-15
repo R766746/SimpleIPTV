@@ -21,7 +21,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.simpleiptv.player.core.model.Channel
+import com.simpleiptv.player.core.repository.EpgSessionStore
 import com.simpleiptv.player.ui.components.ChannelLogo
+import com.simpleiptv.player.ui.components.NowNextInfo
 
 @Composable
 fun LiveChannelCard(
@@ -31,6 +33,12 @@ fun LiveChannelCard(
 ) {
     var isFocused by remember {
         mutableStateOf(false)
+    }
+
+    val nowNext = remember(channel.tvgId) {
+        channel.tvgId?.let { tvgId ->
+            EpgSessionStore.getNowNext(tvgId)
+        }
     }
 
     Card(
@@ -93,6 +101,13 @@ fun LiveChannelCard(
                         text = "Source: $sourceName",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                nowNext?.let { (nowProgram, nextProgram) ->
+                    NowNextInfo(
+                        nowProgram = nowProgram,
+                        nextProgram = nextProgram
                     )
                 }
             }
