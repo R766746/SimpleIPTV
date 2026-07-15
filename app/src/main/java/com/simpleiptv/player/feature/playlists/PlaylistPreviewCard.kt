@@ -12,6 +12,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,8 +22,9 @@ import com.simpleiptv.player.core.model.PlaylistSourcePreview
 
 @Composable
 fun PlaylistPreviewCard(
-    playlist: `PlaylistSourcePreview`,
+    playlist: PlaylistSourcePreview,
     onToggleEnabled: (Boolean) -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -67,10 +69,20 @@ fun PlaylistPreviewCard(
                 )
             }
 
-            Switch(
-                checked = playlist.isEnabled,
-                onCheckedChange = onToggleEnabled
-            )
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                Switch(
+                    checked = playlist.isEnabled,
+                    onCheckedChange = onToggleEnabled
+                )
+
+                TextButton(
+                    onClick = onDelete
+                ) {
+                    Text(text = "Remove")
+                }
+            }
         }
     }
 }

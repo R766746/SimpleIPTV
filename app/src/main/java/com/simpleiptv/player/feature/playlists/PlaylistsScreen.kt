@@ -20,21 +20,29 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import java.util.UUID
 import com.simpleiptv.player.core.model.PlaylistSourcePreview
 import com.simpleiptv.player.core.model.PlaylistSourceType
+import com.simpleiptv.player.core.repository.PlaylistSourcePreviewStore
+import java.util.UUID
 
 @Composable
 fun PlaylistsScreen() {
+    val context = LocalContext.current
+    val playlistStore = remember(context) {
+        PlaylistSourcePreviewStore(context)
+    }
+
     var selectedType by remember {
         mutableStateOf(PlaylistSourceType.M3U_URL)
     }
@@ -64,7 +72,12 @@ fun PlaylistsScreen() {
     }
 
     val playlists = remember {
-        mutableStateListOf<`PlaylistSourcePreview`>()
+        mutableStateListOf<PlaylistSourcePreview>()
+    }
+
+    LaunchedEffect(playlistStore) {
+        playlists.clear()
+        playlists.addAll(playlistStore.load())
     }
 
     val canAdd = when (selectedType) {
@@ -148,7 +161,7 @@ fun PlaylistsScreen() {
                     }
 
                     playlists.add(
-                        `PlaylistSourcePreview`(
+                        PlaylistSourcePreview(
                             id = UUID.randomUUID().toString(),
                             name = playlistName.trim(),
                             type = selectedType,
@@ -156,6 +169,8 @@ fun PlaylistsScreen() {
                             isEnabled = true
                         )
                     )
+
+                    playlistStore.save(playlists.toList())
 
                     playlistName = ""
                     m3uUrl = ""
@@ -206,6 +221,11 @@ fun PlaylistsScreen() {
                         playlist = playlist,
                         onToggleEnabled = { enabled ->
                             playlists[index] = playlist.copy(isEnabled = enabled)
+                            playlistStore.save(playlists.toList())
+                        },
+                        onDelete = {
+                            playlists.removeAt(index)
+                            playlistStore.save(playlists.toList())
                         }
                     )
                 }
@@ -371,7 +391,7 @@ private fun PlaylistForm(
         }
 
         Text(
-            text = "Note: This screen currently stores playlists only in memory. Persistent storage will be added with Room in the next database milestone.",
+            text = "Note: Playlist preview metadata is saved locally. Sensitive Xtream credentials will be handled with encrypted storage in a later milestone.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
