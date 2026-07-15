@@ -149,7 +149,11 @@ fun PlaylistsScreen() {
                 xtreamPassword = it
             }
         )
-
+        if (selectedType == PlaylistSourceType.M3U_TEXT) {
+            M3uTextParsePreview(
+                m3uText = m3uText
+            )
+        }
         Row {
             Button(
                 enabled = canAdd,
