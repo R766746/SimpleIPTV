@@ -7,5 +7,7 @@ data class Channel(
     val tvgId: String? = null,
     val tvgName: String? = null,
     val logoUrl: String? = null,
-    val groupTitle: String? = null
+    val groupTitle: String? = null,
+    val playlistSourceId: String? = null,
+    val playlistName: String? = null
 )

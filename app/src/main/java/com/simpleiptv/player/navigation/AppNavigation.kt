@@ -26,7 +26,9 @@ import com.simpleiptv.player.feature.playlists.PlaylistsScreen
 import com.simpleiptv.player.feature.search.SearchScreen
 import com.simpleiptv.player.feature.series.SeriesScreen
 import com.simpleiptv.player.feature.settings.SettingsScreen
+import com.simpleiptv.player.feature.player.PlayerScreen
 import com.simpleiptv.player.ui.components.SimpleBottomNavigationBar
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +90,9 @@ fun SimpleIPTVApp() {
                 LiveScreen(
                     onOpenPlaylists = {
                         navController.navigateSingleTopTo(AppDestination.Playlists.route)
+                    },
+                    onOpenPlayer = {
+                        navController.navigate(AppDestination.Player.route)
                     }
                 )
             }
@@ -111,7 +116,13 @@ fun SimpleIPTVApp() {
             composable(AppDestination.Settings.route) {
                 SettingsScreen()
             }
-
+            composable(AppDestination.Player.route) {
+                PlayerScreen(
+                    onBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
             composable(AppDestination.Search.route) {
                 SearchScreen(
                     onBack = {

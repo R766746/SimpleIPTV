@@ -13,6 +13,7 @@ sealed class AppDestination(
     object Playlists : AppDestination("playlists", "Playlists", "Lists")
     object Settings : AppDestination("settings", "Settings", "Settings")
     object Search : AppDestination("search", "Search", "Search")
+    object Player : AppDestination("player", "Player", "Player")
 }
 
 val BottomDestinations = listOf(
@@ -31,5 +32,6 @@ val AllDestinations = listOf(
     AppDestination.Favorites,
     AppDestination.Playlists,
     AppDestination.Settings,
-    AppDestination.Search
+    AppDestination.Search,
+    AppDestination.Player
 )
