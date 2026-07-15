@@ -75,16 +75,60 @@ fun PlayerScreen(
         mutableStateOf(false)
     }
 
-    val exoPlayer = remember(channel.streamUrl) {
-        ExoPlayer.Builder(context)
-            .build()
-            .apply {
-                val mediaItem = MediaItem.fromUri(channel.streamUrl)
+    var fatalPlayerError by remember {
+        mutableStateOf<String?>(null)
+    }
 
-                setMediaItem(mediaItem)
-                prepare()
-                playWhenReady = true
-            }
+    val playerResult = remember(context) {
+        runCatching {
+            ExoPlayer.Builder(context).build()
+        }
+    }
+
+    val exoPlayer = playerResult.getOrNull()
+
+    if (exoPlayer == null) {
+        val errorMessage = playerResult.exceptionOrNull()?.message
+            ?: "Unable to create video player."
+
+        PlaceholderScreen(
+            icon = "⚠",
+            title = "Player Error",
+            description = errorMessage,
+            primaryActionText = "Back",
+            onPrimaryAction = onBack
+        )
+        return
+    }
+
+    fun prepareAndPlay() {
+        val streamUrl = channel.streamUrl.trim()
+
+        if (streamUrl.isBlank()) {
+            playbackState = PlaybackUiState.Error(
+                message = "Stream URL is empty."
+            )
+            return
+        }
+
+        runCatching {
+            playbackState = PlaybackUiState.Buffering
+
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+
+            val mediaItem = MediaItem.Builder()
+                .setUri(streamUrl)
+                .build()
+
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
+        }.onFailure { throwable ->
+            playbackState = PlaybackUiState.Error(
+                message = throwable.message ?: throwable::class.java.simpleName
+            )
+        }
     }
 
     DisposableEffect(exoPlayer) {
@@ -114,7 +158,13 @@ fun PlayerScreen(
 
         onDispose {
             exoPlayer.removeListener(listener)
-            exoPlayer.release()
+
+            runCatching {
+                exoPlayer.stop()
+                exoPlayer.release()
+            }.onFailure { throwable ->
+                fatalPlayerError = throwable.message
+            }
         }
     }
 
@@ -128,7 +178,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(channel.streamUrl) {
-        playbackState = PlaybackUiState.Buffering
+        prepareAndPlay()
     }
 
     Column(
@@ -188,10 +238,16 @@ fun PlayerScreen(
 
                 TextButton(
                     onClick = {
-                        if (exoPlayer.isPlaying) {
-                            exoPlayer.pause()
-                        } else {
-                            exoPlayer.play()
+                        runCatching {
+                            if (exoPlayer.isPlaying) {
+                                exoPlayer.pause()
+                            } else {
+                                exoPlayer.play()
+                            }
+                        }.onFailure { throwable ->
+                            playbackState = PlaybackUiState.Error(
+                                message = throwable.message ?: "Unable to control playback."
+                            )
                         }
                     }
                 ) {
@@ -203,12 +259,28 @@ fun PlayerScreen(
                         }
                     )
                 }
+
+                TextButton(
+                    onClick = {
+                        prepareAndPlay()
+                    }
+                ) {
+                    Text(text = "Retry")
+                }
             }
 
             PlaybackStatusChip(
                 playbackState = playbackState,
                 isPlaying = isPlaying
             )
+
+            fatalPlayerError?.let { message ->
+                Text(
+                    text = "Player release warning: $message",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
 
             if (playbackState is PlaybackUiState.Error) {
                 val error = playbackState as PlaybackUiState.Error
@@ -218,19 +290,6 @@ fun PlayerScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
-
-                Button(
-                    onClick = {
-                        playbackState = PlaybackUiState.Buffering
-                        exoPlayer.stop()
-                        exoPlayer.clearMediaItems()
-                        exoPlayer.setMediaItem(MediaItem.fromUri(channel.streamUrl))
-                        exoPlayer.prepare()
-                        exoPlayer.playWhenReady = true
-                    }
-                ) {
-                    Text(text = "Retry")
-                }
             }
 
             Column(
