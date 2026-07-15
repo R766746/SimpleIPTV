@@ -7,12 +7,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
@@ -47,6 +47,7 @@ import androidx.media3.ui.PlayerView
 import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.core.player.PlaybackUiState
 import com.simpleiptv.player.core.repository.ChannelSessionStore
+import com.simpleiptv.player.core.repository.FavoriteChannelStore
 import com.simpleiptv.player.ui.components.PlaceholderScreen
 
 @OptIn(UnstableApi::class)
@@ -74,6 +75,14 @@ fun PlayerScreen(
 
     val context = LocalContext.current
     val view = LocalView.current
+
+    val favoriteStore = remember(context) {
+        FavoriteChannelStore(context)
+    }
+
+    var isFavorite by remember(channel.id) {
+        mutableStateOf(favoriteStore.isFavorite(channel.id))
+    }
 
     var playbackState by remember {
         mutableStateOf<PlaybackUiState>(PlaybackUiState.Idle)
@@ -296,6 +305,20 @@ fun PlayerScreen(
                 ) {
                     Text(text = "Next")
                 }
+
+                OutlinedButton(
+                    onClick = {
+                        isFavorite = favoriteStore.toggleFavorite(channel)
+                    }
+                ) {
+                    Text(
+                        text = if (isFavorite) {
+                            "★ Remove Favorite"
+                        } else {
+                            "☆ Add Favorite"
+                        }
+                    )
+                }
             }
 
             FlowRow(
@@ -312,6 +335,15 @@ fun PlayerScreen(
                         onClick = {},
                         label = {
                             Text(text = "Channel $position")
+                        }
+                    )
+                }
+
+                if (isFavorite) {
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(text = "Favorite")
                         }
                     )
                 }

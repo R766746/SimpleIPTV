@@ -115,7 +115,11 @@ fun SimpleIPTVApp() {
             }
 
             composable(AppDestination.Favorites.route) {
-                FavoritesScreen()
+                FavoritesScreen(
+                    onOpenPlayer = {
+                        navController.navigate(AppDestination.Player.route)
+                    }
+                )
             }
 
             composable(AppDestination.Playlists.route) {
