@@ -26,6 +26,8 @@ import com.simpleiptv.player.feature.player.PlayerScreen
 import com.simpleiptv.player.feature.playlists.PlaylistsScreen
 import com.simpleiptv.player.feature.search.SearchScreen
 import com.simpleiptv.player.feature.series.SeriesScreen
+import com.simpleiptv.player.feature.series.SeriesDetailScreen
+import com.simpleiptv.player.core.repository.SeriesSessionStore
 import com.simpleiptv.player.feature.settings.SettingsScreen
 import com.simpleiptv.player.feature.player.EpgTimelineScreen
 import com.simpleiptv.player.core.repository.ChannelSessionStore
@@ -48,8 +50,8 @@ fun SimpleIPTVApp(
         ?.title ?: AppDestination.Home.title
 
     val showAppChrome = currentRoute != AppDestination.Player.route &&
-            currentRoute != AppDestination.EpgTimeline.route
-
+            currentRoute != AppDestination.EpgTimeline.route &&
+            currentRoute != AppDestination.SeriesDetail.route
     Scaffold(
         topBar = {
             if (showAppChrome) {
@@ -114,11 +116,44 @@ fun SimpleIPTVApp(
             }
 
             composable(AppDestination.Movies.route) {
-                MoviesScreen()
+                MoviesScreen(
+                    onOpenPlayer = {
+                        navController.navigate(AppDestination.Player.route)
+                    }
+                )
             }
 
             composable(AppDestination.Series.route) {
-                SeriesScreen()
+                SeriesScreen(
+                    onOpenSeriesDetail = {
+                        navController.navigate(AppDestination.SeriesDetail.route)
+                    }
+                )
+            }
+            composable(AppDestination.SeriesDetail.route) {
+                val series = SeriesSessionStore.selectedSeries
+
+                if (series != null) {
+                    SeriesDetailScreen(
+                        seriesInfo = series,
+                        onBack = {
+                            navController.popBackStack()
+                        },
+                        onPlayEpisode = {
+                            navController.navigate(AppDestination.Player.route)
+                        }
+                    )
+                } else {
+                    com.simpleiptv.player.ui.components.PlaceholderScreen(
+                        icon = "📺",
+                        title = "No Series Selected",
+                        description = "Go back to Series and select one.",
+                        primaryActionText = "Back",
+                        onPrimaryAction = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
             }
 
             composable(AppDestination.Favorites.route) {

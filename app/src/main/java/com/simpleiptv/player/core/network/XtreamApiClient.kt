@@ -3,6 +3,8 @@ package com.simpleiptv.player.core.network
 import com.simpleiptv.player.core.model.XtreamCategory
 import com.simpleiptv.player.core.model.XtreamCredentials
 import com.simpleiptv.player.core.model.XtreamLiveStream
+import com.simpleiptv.player.core.model.XtreamVodStream
+import com.simpleiptv.player.core.model.XtreamSeriesInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -78,6 +80,106 @@ object XtreamApiClient {
 
             streams
         }
+    }
+    suspend fun getVodCategories(credentials: XtreamCredentials): Result<List<XtreamCategory>> {
+        val url = "${credentials.baseApiUrl()}?username=${credentials.username}&password=${credentials.password}&action=get_vod_categories"
+
+        return fetchJsonArray(url).map { array ->
+            val categories = mutableListOf<XtreamCategory>()
+
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("category_id", "").trim()
+                val name = item.optString("category_name", "").trim()
+                if (id.isNotBlank() && name.isNotBlank()) {
+                    categories.add(XtreamCategory(id = id, name = name))
+                }
+            }
+
+            categories
+        }
+    }
+
+    suspend fun getVodStreams(credentials: XtreamCredentials): Result<List<XtreamVodStream>> {
+        val url = "${credentials.baseApiUrl()}?username=${credentials.username}&password=${credentials.password}&action=get_vod_streams"
+
+        return fetchJsonArray(url).map { array ->
+            val streams = mutableListOf<XtreamVodStream>()
+
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val streamId = item.optString("stream_id", "").trim()
+                val name = item.optString("name", "").trim()
+                if (streamId.isBlank() || name.isBlank()) continue
+
+                streams.add(
+                    XtreamVodStream(
+                        streamId = streamId,
+                        name = name,
+                        categoryId = item.optString("category_id", "").blankToNull(),
+                        streamIcon = item.optString("stream_icon", "").blankToNull(),
+                        containerExtension = item.optString("container_extension", "mp4").blankToNull(),
+                        rating = item.optString("rating", "").blankToNull()
+                    )
+                )
+            }
+
+            streams
+        }
+    }
+
+    suspend fun getSeriesCategories(credentials: XtreamCredentials): Result<List<XtreamCategory>> {
+        val url = "${credentials.baseApiUrl()}?username=${credentials.username}&password=${credentials.password}&action=get_series_categories"
+
+        return fetchJsonArray(url).map { array ->
+            val categories = mutableListOf<XtreamCategory>()
+
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("category_id", "").trim()
+                val name = item.optString("category_name", "").trim()
+                if (id.isNotBlank() && name.isNotBlank()) {
+                    categories.add(XtreamCategory(id = id, name = name))
+                }
+            }
+
+            categories
+        }
+    }
+
+    suspend fun getSeries(credentials: XtreamCredentials): Result<List<XtreamSeriesInfo>> {
+        val url = "${credentials.baseApiUrl()}?username=${credentials.username}&password=${credentials.password}&action=get_series"
+
+        return fetchJsonArray(url).map { array ->
+            val series = mutableListOf<XtreamSeriesInfo>()
+
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val seriesId = item.optString("series_id", "").trim()
+                val name = item.optString("name", "").trim()
+                if (seriesId.isBlank() || name.isBlank()) continue
+
+                series.add(
+                    XtreamSeriesInfo(
+                        seriesId = seriesId,
+                        name = name,
+                        categoryId = item.optString("category_id", "").blankToNull(),
+                        cover = item.optString("cover", "").blankToNull(),
+                        rating = item.optString("rating", "").blankToNull(),
+                        plot = item.optString("plot", "").blankToNull()
+                    )
+                )
+            }
+
+            series
+        }
+    }
+    suspend fun getSeriesInfo(
+        credentials: XtreamCredentials,
+        seriesId: String
+    ): Result<JSONObject> {
+        val url = "${credentials.baseApiUrl()}?username=${credentials.username}&password=${credentials.password}&action=get_series_info&series_id=$seriesId"
+        return fetchJson(url)
     }
 
     private suspend fun fetchJson(url: String): Result<JSONObject> {

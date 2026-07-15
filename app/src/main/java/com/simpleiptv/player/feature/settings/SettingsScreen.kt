@@ -36,7 +36,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.simpleiptv.player.core.network.M3uPlaylistFetcher
 import com.simpleiptv.player.core.repository.AppSettingsStore
 import com.simpleiptv.player.core.repository.BUFFER_OPTIONS
 import com.simpleiptv.player.core.repository.ChannelSessionStore
@@ -46,7 +45,7 @@ import com.simpleiptv.player.core.repository.FavoriteChannelStore
 import com.simpleiptv.player.core.repository.PlaylistSourcePreviewStore
 import com.simpleiptv.player.core.repository.ThemeMode
 import com.simpleiptv.player.core.repository.XtreamCredentialsStore
-import com.simpleiptv.player.core.util.XmltvParser
+import com.simpleiptv.player.core.network.EpgFetcher
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -224,13 +223,15 @@ fun SettingsScreen(
                             epgError = null
                             epgSummary = null
 
-                            M3uPlaylistFetcher.fetch(epgUrl.trim())
-                                .onSuccess { rawXml ->
-                                    epgStatus = "Downloaded. Parsing..."
-                                    val result = XmltvParser.parse(rawXml)
+                            EpgFetcher.fetchAndParse(epgUrl.trim())
+                                .onSuccess { result ->
                                     EpgSessionStore.setEpgData(result.programs, result.channelNames)
                                     epgSummary = "${result.programCount} programs for ${result.channelCount} channel(s)"
                                     epgStatus = "EPG loaded successfully."
+
+                                    if (result.warnings.isNotEmpty()) {
+                                        epgStatus = "EPG loaded with ${result.warnings.size} warning(s)."
+                                    }
                                 }
                                 .onFailure { throwable ->
                                     epgError = throwable.message ?: "Failed to fetch EPG."

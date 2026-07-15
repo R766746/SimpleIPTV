@@ -20,6 +20,10 @@ data class XtreamCredentials(
         return "$normalized/live/$username/$password/$streamId.$extension"
     }
 
+    fun vodStreamUrl(streamId: String, extension: String = "mp4"): String {
+        val normalized = serverUrl.trimEnd('/')
+        return "$normalized/movie/$username/$password/$streamId.$extension"
+    }
     fun catchupUrl(streamId: String, startTimeMillis: Long, durationSeconds: Long): String {
         val normalized = serverUrl.trimEnd('/')
         val startFormatted = formatCatchupTime(startTimeMillis)

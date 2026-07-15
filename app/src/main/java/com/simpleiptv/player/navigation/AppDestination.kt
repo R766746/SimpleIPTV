@@ -9,6 +9,7 @@ sealed class AppDestination(
     object Live : AppDestination("live", "Live TV", "Live")
     object Movies : AppDestination("movies", "Movies", "Movies")
     object Series : AppDestination("series", "Series", "Series")
+    object SeriesDetail : AppDestination("series_detail", "Series Detail", "Detail")
     object Favorites : AppDestination("favorites", "Favorites", "Favs")
     object Playlists : AppDestination("playlists", "Playlists", "Lists")
     object Settings : AppDestination("settings", "Settings", "Settings")
@@ -30,6 +31,7 @@ val AllDestinations = listOf(
     AppDestination.Live,
     AppDestination.Movies,
     AppDestination.Series,
+    AppDestination.SeriesDetail,
     AppDestination.Favorites,
     AppDestination.Playlists,
     AppDestination.Settings,
