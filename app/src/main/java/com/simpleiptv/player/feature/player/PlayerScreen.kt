@@ -8,6 +8,8 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -56,8 +61,11 @@ import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.core.player.PlaybackUiState
 import com.simpleiptv.player.core.repository.ChannelSessionStore
 import com.simpleiptv.player.core.repository.FavoriteChannelStore
+import com.simpleiptv.player.core.util.TvDeviceDetector
 import com.simpleiptv.player.ui.components.ChannelLogo
 import com.simpleiptv.player.ui.components.PlaceholderScreen
+
+import android.view.KeyEvent as AndroidKeyEvent
 
 @OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalLayoutApi::class)
@@ -89,12 +97,14 @@ fun PlayerScreen(
         FavoriteChannelStore(context)
     }
 
-    var isFavorite by remember(channel.id) {
-        mutableStateOf(favoriteStore.isFavorite(channel.id))
+    val isTv = remember(context) { TvDeviceDetector.isAndroidTv(context) }
+
+    var isFullscreen by remember(isTv) {
+        mutableStateOf(isTv)
     }
 
-    var isFullscreen by remember {
-        mutableStateOf(false)
+    var isFavorite by remember(channel.id) {
+        mutableStateOf(favoriteStore.isFavorite(channel.id))
     }
 
     var playbackState by remember {
@@ -112,9 +122,7 @@ fun PlayerScreen(
     }
 
     val playerResult = remember(context) {
-        runCatching {
-            ExoPlayer.Builder(context).build()
-        }
+        runCatching { ExoPlayer.Builder(context).build() }
     }
 
     val exoPlayer = playerResult.getOrNull()
@@ -135,25 +143,16 @@ fun PlayerScreen(
 
     fun prepareAndPlay(targetChannel: Channel) {
         val streamUrl = targetChannel.streamUrl.trim()
-
         if (streamUrl.isBlank()) {
-            playbackState = PlaybackUiState.Error(
-                message = "Stream URL is empty."
-            )
+            playbackState = PlaybackUiState.Error(message = "Stream URL is empty.")
             return
         }
 
         runCatching {
             playbackState = PlaybackUiState.Buffering
-
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
-
-            val mediaItem = MediaItem.Builder()
-                .setUri(streamUrl)
-                .build()
-
-            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.setMediaItem(MediaItem.Builder().setUri(streamUrl).build())
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
         }.onFailure { throwable ->
@@ -164,11 +163,7 @@ fun PlayerScreen(
     }
 
     fun switchToChannel(nextChannel: Channel?) {
-        if (nextChannel == null) {
-            return
-        }
-
-        currentChannel = nextChannel
+        nextChannel?.let { currentChannel = it }
     }
 
     DisposableEffect(exoPlayer) {
@@ -188,35 +183,60 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                playbackState = PlaybackUiState.Error(
-                    message = error.message ?: "Playback failed."
-                )
+                playbackState = PlaybackUiState.Error(message = error.message ?: "Playback failed.")
             }
         }
 
         exoPlayer.addListener(listener)
-
         onDispose {
             exoPlayer.removeListener(listener)
-
-            runCatching {
-                exoPlayer.stop()
-                exoPlayer.release()
-            }
+            runCatching { exoPlayer.stop(); exoPlayer.release() }
         }
     }
 
     DisposableEffect(Unit) {
         val previousKeepScreenOn = view.keepScreenOn
         view.keepScreenOn = true
-
-        onDispose {
-            view.keepScreenOn = previousKeepScreenOn
-        }
+        onDispose { view.keepScreenOn = previousKeepScreenOn }
     }
 
-    LaunchedEffect(channel.streamUrl) {
-        prepareAndPlay(channel)
+    LaunchedEffect(channel.streamUrl) { prepareAndPlay(channel) }
+
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // Hardware key handling (TV remote + D-pad)
+    val handleKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = remember {
+        { keyEvent ->
+            if (keyEvent.nativeKeyEvent.action == AndroidKeyEvent.ACTION_DOWN) {
+                when (keyEvent.nativeKeyEvent.keyCode) {
+                    AndroidKeyEvent.KEYCODE_CHANNEL_UP,
+                    AndroidKeyEvent.KEYCODE_DPAD_UP -> {
+                        switchToChannel(ChannelSessionStore.selectNextChannel())
+                        true
+                    }
+                    AndroidKeyEvent.KEYCODE_CHANNEL_DOWN,
+                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                        switchToChannel(ChannelSessionStore.selectPreviousChannel())
+                        true
+                    }
+                    AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                    AndroidKeyEvent.KEYCODE_SPACE -> {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        true
+                    }
+                    AndroidKeyEvent.KEYCODE_MEDIA_PLAY -> {
+                        exoPlayer.play()
+                        true
+                    }
+                    AndroidKeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                        exoPlayer.pause()
+                        true
+                    }
+                    else -> false
+                }
+            } else false
+        }
     }
 
     if (isFullscreen) {
@@ -225,24 +245,25 @@ fun PlayerScreen(
             playbackState = playbackState,
             channelName = channel.name,
             onBack = onBack,
-            onExitFullscreen = {
-                isFullscreen = false
-            }
+            onExitFullscreen = { isFullscreen = false },
+            handleKeyEvent = handleKeyEvent,
+            focusRequester = focusRequester
         )
         return
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusable()
+            .focusRequester(focusRequester)
+            .onKeyEvent(handleKeyEvent)
     ) {
         PlayerVideoSurface(
             exoPlayer = exoPlayer,
             playbackState = playbackState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(340.dp)
+            modifier = Modifier.fillMaxWidth().height(340.dp)
         )
 
         Column(
@@ -253,186 +274,80 @@ fun PlayerScreen(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            if (isTv) {
+                AssistChip(
+                    onClick = {},
+                    interactionSource = remember { MutableInteractionSource() },
+                    label = { Text(text = "📺 TV Mode Active • Remote keys enabled") }
+                )
+            }
+
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Button(
-                    onClick = onBack
-                ) {
-                    Text(text = "Back")
+                Button(onClick = onBack) { Text(text = "Back") }
+                TextButton(onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }) {
+                    Text(text = if (isPlaying) "Pause" else "Play")
                 }
-
-                TextButton(
-                    onClick = {
-                        runCatching {
-                            if (exoPlayer.isPlaying) {
-                                exoPlayer.pause()
-                            } else {
-                                exoPlayer.play()
-                            }
-                        }.onFailure { throwable ->
-                            playbackState = PlaybackUiState.Error(
-                                message = throwable.message ?: "Unable to control playback."
-                            )
-                        }
-                    }
-                ) {
-                    Text(
-                        text = if (isPlaying) {
-                            "Pause"
-                        } else {
-                            "Play"
-                        }
-                    )
-                }
-
-                TextButton(
-                    onClick = {
-                        prepareAndPlay(channel)
-                    }
-                ) {
-                    Text(text = "Retry")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        isFullscreen = true
-                    }
-                ) {
-                    Text(text = "Full Screen")
-                }
-
-                OutlinedButton(
-                    enabled = ChannelSessionStore.hasMultipleChannels(),
-                    onClick = {
-                        switchToChannel(ChannelSessionStore.selectPreviousChannel())
-                    }
-                ) {
-                    Text(text = "Previous")
-                }
-
-                OutlinedButton(
-                    enabled = ChannelSessionStore.hasMultipleChannels(),
-                    onClick = {
-                        switchToChannel(ChannelSessionStore.selectNextChannel())
-                    }
-                ) {
-                    Text(text = "Next")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        isFavorite = favoriteStore.toggleFavorite(channel)
-                    }
-                ) {
-                    Text(
-                        text = if (isFavorite) {
-                            "★ Remove Favorite"
-                        } else {
-                            "☆ Add Favorite"
-                        }
-                    )
+                TextButton(onClick = { prepareAndPlay(channel) }) { Text(text = "Retry") }
+                OutlinedButton(onClick = { isFullscreen = true }) { Text(text = "Full Screen") }
+                OutlinedButton(enabled = ChannelSessionStore.hasMultipleChannels(), onClick = { switchToChannel(ChannelSessionStore.selectPreviousChannel()) }) { Text(text = "Previous") }
+                OutlinedButton(enabled = ChannelSessionStore.hasMultipleChannels(), onClick = { switchToChannel(ChannelSessionStore.selectNextChannel()) }) { Text(text = "Next") }
+                OutlinedButton(onClick = { isFavorite = favoriteStore.toggleFavorite(channel) }) {
+                    Text(text = if (isFavorite) "★ Remove Favorite" else "☆ Add Favorite")
                 }
             }
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                PlaybackStatusChip(
-                    playbackState = playbackState,
-                    isPlaying = isPlaying
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(
+                    onClick = {},
+                    interactionSource = remember { MutableInteractionSource() },
+                    label = {
+                        val stateText = when (playbackState) {
+                            PlaybackUiState.Idle -> "Idle"
+                            PlaybackUiState.Buffering -> "Buffering"
+                            PlaybackUiState.Ready -> if (isPlaying) "Playing" else "Ready"
+                            is PlaybackUiState.Error -> "Error"
+                        }
+                        Text(text = stateText)
+                    }
                 )
-
                 ChannelSessionStore.selectedChannelPositionText()?.let { position ->
                     AssistChip(
                         onClick = {},
-                        label = {
-                            Text(text = "Channel $position")
-                        }
+                        interactionSource = remember { MutableInteractionSource() },
+                        label = { Text(text = "Channel $position") }
                     )
                 }
-
                 if (isFavorite) {
                     AssistChip(
                         onClick = {},
-                        label = {
-                            Text(text = "Favorite")
-                        }
+                        interactionSource = remember { MutableInteractionSource() },
+                        label = { Text(text = "Favorite") }
                     )
                 }
             }
 
             if (playbackState is PlaybackUiState.Error) {
                 val error = playbackState as PlaybackUiState.Error
-
-                Text(
-                    text = "Playback error: ${error.message}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
+                Text(text = "Playback error: ${error.message}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                ChannelLogo(
-                    logoUrl = channel.logoUrl,
-                    channelName = channel.name,
-                    size = 64.dp
-                )
-
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = channel.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = channel.groupTitle?.takeIf { it.isNotBlank() } ?: "No group",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    channel.playlistName?.let { playlistName ->
-                        Text(
-                            text = "Source: $playlistName",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    channel.tvgId?.let { tvgId ->
-                        Text(
-                            text = "TVG ID: $tvgId",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                ChannelLogo(logoUrl = channel.logoUrl, channelName = channel.name, size = 64.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                    Text(text = channel.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(text = channel.groupTitle?.takeIf { it.isNotBlank() } ?: "No group", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    channel.playlistName?.let { Text(text = "Source: $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    channel.tvgId?.let { Text(text = "TVG ID: $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "Stream URL",
-                    style = MaterialTheme.typography.titleSmall
-                )
-
-                Text(
-                    text = channel.streamUrl,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(text = "Stream URL", style = MaterialTheme.typography.titleSmall)
+                Text(text = channel.streamUrl, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -444,43 +359,31 @@ private fun FullscreenPlayerView(
     playbackState: PlaybackUiState,
     channelName: String,
     onBack: () -> Unit,
-    onExitFullscreen: () -> Unit
+    onExitFullscreen: () -> Unit,
+    handleKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
+    focusRequester: FocusRequester
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusable()
+            .focusRequester(focusRequester)
+            .onKeyEvent(handleKeyEvent)
     ) {
-        PlayerVideoSurface(
-            exoPlayer = exoPlayer,
-            playbackState = playbackState,
-            modifier = Modifier.fillMaxSize()
-        )
+        PlayerVideoSurface(exoPlayer = exoPlayer, playbackState = playbackState, modifier = Modifier.fillMaxSize())
 
         FlowRow(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp),
+            modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Button(
-                onClick = onBack
-            ) {
-                Text(text = "Back")
-            }
-
-            OutlinedButton(
-                onClick = onExitFullscreen
-            ) {
-                Text(text = "Exit Full Screen")
-            }
-
+            Button(onClick = onBack) { Text(text = "Back") }
+            OutlinedButton(onClick = onExitFullscreen) { Text(text = "Exit Full Screen") }
             AssistChip(
                 onClick = {},
-                label = {
-                    Text(text = channelName)
-                }
+                interactionSource = remember { MutableInteractionSource() },
+                label = { Text(text = channelName) }
             )
         }
     }
@@ -493,10 +396,7 @@ private fun PlayerVideoSurface(
     playbackState: PlaybackUiState,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier.background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { androidContext ->
@@ -505,18 +405,11 @@ private fun PlayerVideoSurface(
                     useController = true
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 }
             },
-            update = { playerView ->
-                playerView.player = exoPlayer
-            }
+            update = { playerView -> playerView.player = exoPlayer }
         )
-
         if (playbackState is PlaybackUiState.Buffering) {
             CircularProgressIndicator()
         }
@@ -524,70 +417,27 @@ private fun PlayerVideoSurface(
 }
 
 @Composable
-private fun PlaybackStatusChip(
-    playbackState: PlaybackUiState,
-    isPlaying: Boolean
-) {
-    val text = when (playbackState) {
-        PlaybackUiState.Idle -> "Idle"
-        PlaybackUiState.Buffering -> "Buffering"
-        PlaybackUiState.Ready -> {
-            if (isPlaying) {
-                "Playing"
-            } else {
-                "Ready"
-            }
-        }
-
-        is PlaybackUiState.Error -> "Error"
-    }
-
-    AssistChip(
-        onClick = {},
-        label = {
-            Text(text = text)
-        }
-    )
-}
-
-@Composable
-private fun ApplyFullscreenMode(
-    enabled: Boolean
-) {
+private fun ApplyFullscreenMode(enabled: Boolean) {
     val context = LocalContext.current
-    val activity = remember(context) {
-        context.findActivity()
-    }
+    val activity = remember(context) { context.findActivity() }
 
     DisposableEffect(enabled, activity) {
         val window = activity?.window
-
         if (window != null) {
-            val controller = WindowInsetsControllerCompat(
-                window,
-                window.decorView
-            )
-
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
             if (enabled) {
                 WindowCompat.setDecorFitsSystemWindows(window, false)
-
                 controller.hide(WindowInsetsCompat.Type.systemBars())
-                controller.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
                 controller.show(WindowInsetsCompat.Type.systemBars())
                 WindowCompat.setDecorFitsSystemWindows(window, true)
             }
         }
-
         onDispose {
-            if (window != null) {
-                WindowInsetsControllerCompat(
-                    window,
-                    window.decorView
-                ).show(WindowInsetsCompat.Type.systemBars())
-
-                WindowCompat.setDecorFitsSystemWindows(window, true)
+            activity?.window?.let { w ->
+                WindowInsetsControllerCompat(w, w.decorView).show(WindowInsetsCompat.Type.systemBars())
+                WindowCompat.setDecorFitsSystemWindows(w, true)
             }
         }
     }
