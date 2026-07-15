@@ -29,12 +29,15 @@ import com.simpleiptv.player.feature.series.SeriesScreen
 import com.simpleiptv.player.feature.settings.SettingsScreen
 import com.simpleiptv.player.feature.player.EpgTimelineScreen
 import com.simpleiptv.player.core.repository.ChannelSessionStore
+import com.simpleiptv.player.core.repository.ThemeMode
 import com.simpleiptv.player.core.model.Channel
 import com.simpleiptv.player.ui.components.SimpleBottomNavigationBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SimpleIPTVApp() {
+fun SimpleIPTVApp(
+    onThemeChanged: (ThemeMode) -> Unit = {}
+) {
     val navController = rememberNavController()
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -131,7 +134,9 @@ fun SimpleIPTVApp() {
             }
 
             composable(AppDestination.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    onThemeChanged = onThemeChanged
+                )
             }
 
             composable(AppDestination.Search.route) {

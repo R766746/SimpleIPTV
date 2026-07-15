@@ -81,6 +81,7 @@ class PlaylistSourcePreviewStore(
         preferences
             .edit()
             .remove(KEY_PLAYLISTS)
+            .clear()
             .apply()
     }
 
